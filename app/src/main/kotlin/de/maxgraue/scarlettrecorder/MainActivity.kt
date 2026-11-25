@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
             Text("Metronome and overdub workflow", color = Color.Gray)
             Text("BPM ${bpm.toInt()}", color = Color.White)
             Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 40f..220f)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { playing = !playing }) { Text(if (playing) "STOP" else "METRONOME") }; OutlinedButton(onClick = {}) { Text("COUNT-IN") } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { playing = !playing; looper.metronomeEnabled = playing; looper.bpm = bpm }) { Text(if (playing) "STOP" else "METRONOME") }; OutlinedButton(onClick = {}) { Text("COUNT-IN") } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = {}) { Text("RECORD LOOP") }; OutlinedButton(onClick = {}) { Text("OVERDUB") } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = {}) { Text("UNDO") }; OutlinedButton(onClick = {}) { Text("CLEAR") } }
             Text("State: " + state.name + " · Loop length: " + "%.2f s".format(length), color = Color.Gray)
@@ -212,4 +212,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
