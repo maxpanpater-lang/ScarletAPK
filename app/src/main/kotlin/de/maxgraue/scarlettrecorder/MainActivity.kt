@@ -55,7 +55,9 @@ class MainActivity : ComponentActivity() {
 @Composable fun ScarlettRecorderApp(usbAudio: UsbAudioManager) {
     val context = LocalContext.current
     val recorder = RecordingService.recorder
-    val recording by RecordingService.active.collectAsState()
+    val recording by RecordingService.recordingActive.collectAsState()
+    val monitoringActive by RecordingService.monitoringActive.collectAsState()
+    var page by remember { mutableStateOf("Recorder") }
     var mode by remember { mutableStateOf("Stereo") }
     var monitoring by remember { mutableStateOf(false) }
     var showRecordings by remember { mutableStateOf(false) }
@@ -69,10 +71,10 @@ class MainActivity : ComponentActivity() {
         val folder = context.getExternalFilesDir("recordings") ?: context.filesDir
         val files = remember(revision, showRecordings) { folder.listFiles()?.filter { it.extension in listOf("wav", "mp3") }?.sortedByDescending { it.lastModified() }.orEmpty() }
         AlertDialog(onDismissRequest = { player.reset(); showRecordings = false },
-            title = { Text("Aufnahmen") },
+            title = { Text("Recordings") },
             text = {
                 LazyColumn {
-                    item { Text(if (exporting) "MP3 wird exportiert …" else exportMessage) }
+                    item { Text(if (exporting) "Exporting MP3 …" else exportMessage) }
                     items(files) { file ->
                         TextButton(onClick = {
                             runCatching {
@@ -80,7 +82,7 @@ class MainActivity : ComponentActivity() {
                                 player.setDataSource(file.absolutePath)
                                 player.prepare()
                                 player.start()
-                            }.onFailure { recorder.error.value = "Wiedergabe fehlgeschlagen" }
+                            }.onFailure { recorder.error.value = "Playback failed" }
                         }) { Text(file.name + " · " + file.length() / 1024 + " KB") }
                         TextButton(onClick = {
                             val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
@@ -88,23 +90,23 @@ class MainActivity : ComponentActivity() {
                                 .setType(if (file.extension == "mp3") "audio/mpeg" else "audio/wav")
                                 .putExtra(android.content.Intent.EXTRA_STREAM, uri)
                                 .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            context.startActivity(android.content.Intent.createChooser(share, "Aufnahme teilen"))
-                        }) { Text("Teilen") }
+                            context.startActivity(android.content.Intent.createChooser(share, "Share recording"))
+                        }) { Text("Share") }
                         if (file.extension == "wav") TextButton(enabled = !exporting, onClick = {
                             exporting = true
                             exportScope.launch {
                                 val result = withContext(Dispatchers.IO) {
                                     Mp3Exporter.export(file, File(file.parentFile, file.nameWithoutExtension + "-${System.currentTimeMillis()}.mp3"))
                                 }
-                                exportMessage = result.fold({ "MP3 gespeichert · 192 kbit/s" }, { "MP3-Export fehlgeschlagen: ${it.message}" })
+                                exportMessage = result.fold({ "MP3 saved · 192 kbps" }, { "MP3 export failed: ${it.message}" })
                                 revision++
                                 exporting = false
                             }
-                        }) { Text("Als MP3 exportieren") }
+                        }) { Text("Export as MP3") }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { player.reset(); showRecordings = false }) { Text("Schließen") } })
+            confirmButton = { TextButton(onClick = { player.reset(); showRecordings = false }) { Text("Close") } })
     }
     val levels by recorder.levels.collectAsState()
     val seconds by recorder.elapsedSeconds.collectAsState()
@@ -112,18 +114,28 @@ class MainActivity : ComponentActivity() {
     MaterialTheme(colorScheme = darkColorScheme(primary = Scarlett, background = Bg, surface = Card)) {
         Surface(modifier = Modifier.fillMaxSize(), color = Bg) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("${page.uppercase()}", color = Scarlett, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("Recorder", "Looper", "Mixer", "Effects", "Recordings").forEach { item ->
+                        FilterChip(selected = page == item, onClick = { page = item }, label = { Text(item, fontSize = 11.sp) })
+                    }
+                }
+                if (page == "Looper") { LooperPage(); return@Column }
+                if (page == "Mixer") { MixerPage(); return@Column }
+                if (page == "Effects") { EffectsPage(recorder); return@Column }
+                if (page == "Recordings") { TextButton(onClick = { showRecordings = true }) { Text("Open recordings") }; return@Column }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column { Text("SCARLETT RECORDER", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp); Text("USB-Audio-Aufnahme", color = Color.Gray) }
+                    Column { Text("SCARLETT RECORDER", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp); Text("USB audio interface", color = Color.Gray) }
                     val device by usbAudio.device.collectAsState()
-                    AssistChip(onClick = { usbAudio.refresh() }, label = { Text(if (device == null) "Kein USB" else "USB ✓") }, leadingIcon = { Text("●", color = if (device == null) Color.Gray else Scarlett) })
+                    AssistChip(onClick = { usbAudio.refresh() }, label = { Text(if (device == null) "No USB" else "USB ✓") }, leadingIcon = { Text("●", color = if (device == null) Color.Gray else Scarlett) })
                 }
                 ChannelMeter("INPUT 1", "Mono", levels.first)
                 ChannelMeter("INPUT 2", "Mono", levels.second)
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Card)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Aufnahmeformat", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text("Recording format", color = Color.White, fontWeight = FontWeight.SemiBold)
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording, selected = mode == value, onClick = { mode = value }, label = { Text(value) }) } }
-                        Text("48 kHz · 16 Bit · WAV", color = Color.Gray, fontSize = 12.sp)
+                        Text("48 kHz · 16 bit · WAV and MP3 export", color = Color.Gray, fontSize = 12.sp)
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -135,28 +147,51 @@ class MainActivity : ComponentActivity() {
                         if (it && !recording) androidx.core.content.ContextCompat.startForegroundService(context, intent.setAction("MONITOR"))
                         else if (!it && recording) context.startService(intent.setAction("STOP"))
                     })
-                    Text("Software-Monitoring über USB")
+                    Text("USB monitoring")
                 }
-                Text(if (audioError.isNotEmpty()) audioError else if (recording) "Aufnahme · ${seconds}s" else "Bereit für Aufnahme", color = if (recording) Scarlett else Color.Gray)
+                Text(if (audioError.isNotEmpty()) audioError else if (recording) "Recording · ${seconds}s" else if (monitoringActive) "Monitoring active" else "Ready", color = if (recording || monitoringActive) Scarlett else Color.Gray)
                 Button(onClick = {
                     val intent = android.content.Intent(context, RecordingService::class.java)
                     if (recording) context.startService(intent.setAction("STOP"))
                     else runCatching {
                         androidx.core.content.ContextCompat.startForegroundService(context, intent.putExtra("mode", mode))
-                    }.onFailure { recorder.error.value = it.message ?: "Start fehlgeschlagen" }
-                }, modifier = Modifier.fillMaxWidth().height(58.dp), colors = ButtonDefaults.buttonColors(containerColor = if (recording) Color(0xFF7B1D25) else Scarlett), shape = RoundedCornerShape(14.dp)) { Text(if (recording) "AUFNAHME STOPPEN" else "●  AUFNAHME STARTEN", fontWeight = FontWeight.Bold) }
-                TextButton(enabled = !recording, onClick = { showRecordings = true }) { Text("Aufnahmen abspielen") }
+                    }.onFailure { recorder.error.value = it.message ?: "Start failed" }
+                }, modifier = Modifier.fillMaxWidth().height(58.dp), colors = ButtonDefaults.buttonColors(containerColor = if (recording) Color(0xFF7B1D25) else Scarlett), shape = RoundedCornerShape(14.dp)) { Text(if (recording) "STOP RECORDING" else "●  START RECORDING", fontWeight = FontWeight.Bold) }
+                TextButton(enabled = !recording && !monitoringActive, onClick = { showRecordings = true }) { Text("Open recordings") }
             }
         }
     }
 }
+
+@Composable private fun LooperPage() {
+    var bpm by remember { mutableStateOf(120f) }
+    var playing by remember { mutableStateOf(false) }
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Card)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("LIVE LOOPER", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("Metronome and overdub workflow", color = Color.Gray)
+            Text("BPM ${bpm.toInt()}", color = Color.White)
+            Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 40f..220f)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { playing = !playing }) { Text(if (playing) "STOP" else "METRONOME") }; OutlinedButton(onClick = {}) { Text("COUNT-IN") } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = {}) { Text("RECORD LOOP") }; OutlinedButton(onClick = {}) { Text("OVERDUB") } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = {}) { Text("UNDO") }; OutlinedButton(onClick = {}) { Text("CLEAR") } }
+            Text("Loop 1 · ready", color = Color.Gray)
+        }
+    }
+}
+
+@Composable private fun MixerPage() {
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Card)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text("LOOP MIXER", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold); listOf("Loop 1", "Loop 2", "Loop 3", "Monitoring").forEach { name -> Row(verticalAlignment = Alignment.CenterVertically) { Text(name, Modifier.width(100.dp), color = Color.White); Slider(value = .8f, onValueChange = {}, modifier = Modifier.weight(1f)); TextButton(onClick = {}) { Text("MUTE") }; TextButton(onClick = {}) { Text("SOLO") } } } } }
+}
+
+@Composable private fun EffectsPage(recorder: AudioRecorder) { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Card)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text("EFFECTS", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("EQ and compressor apply to monitoring", color = Color.Gray); Text("EQ gain"); Slider(value = recorder.effects.settings.eq, onValueChange = { recorder.effects.settings.eq = it }, valueRange = -1f..1f); Text("Compressor"); Slider(value = recorder.effects.settings.compressor, onValueChange = { recorder.effects.settings.compressor = it }, valueRange = 0f..0.9f) } } }
 
 @Composable private fun ChannelMeter(name: String, type: String, level: Float) {
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Card)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(name, color = Color.White, fontWeight = FontWeight.Bold); Text(if (level > 0f) "%.1f dBFS".format(20 * kotlin.math.log10(level)) else "−∞ dBFS", color = Color.LightGray) }
             LinearProgressIndicator(progress = { level }, modifier = Modifier.fillMaxWidth().height(12.dp), color = if (level > .85f) Color.Red else Color(0xFF62C978), trackColor = Color(0xFF303238))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(type, color = Color.Gray, fontSize = 12.sp); Text("Monitoring aus", color = Color.Gray, fontSize = 12.sp) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(type, color = Color.Gray, fontSize = 12.sp); Text("Monitoring", color = Color.Gray, fontSize = 12.sp) }
         }
     }
 }
