@@ -204,7 +204,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onLongPress = {
-                                        if (selectedSlot == slot) looper.clear()
+                                        if (selectedSlot == slot) looper.clear(slot)
                                         slotStates[slot] = LooperState.IDLE
                                         slotLengths[slot] = 0f
                                     },
@@ -215,15 +215,15 @@ class MainActivity : ComponentActivity() {
                                                 val audio = context.getSystemService(AudioManager::class.java)
                                                 val input = audio.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
                                                 val output = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
-                                                if (input != null && output != null && looper.start(input, output)) slotStates[slot] = LooperState.RECORDING
+                                                if (input != null && output != null && looper.start(input, output, slot)) slotStates[slot] = LooperState.RECORDING
                                             }
                                             LooperState.RECORDING -> {
-                                                looper.finishLoop()
+                                                looper.finishLoop(slot)
                                                 slotStates[slot] = LooperState.PLAYING
                                                 slotLengths[slot] = length
                                             }
                                             LooperState.PLAYING, LooperState.OVERDUBBING -> {
-                                                looper.toggleOverdub()
+                                                looper.toggleOverdub(slot)
                                                 slotStates[slot] = if (slotStates[slot] == LooperState.OVERDUBBING) LooperState.PLAYING else LooperState.OVERDUBBING
                                             }
                                         }
@@ -254,7 +254,7 @@ class MainActivity : ComponentActivity() {
                     Text(if (metronomeOn) "STOP METRONOME" else "METRONOME")
                 }
                 OutlinedButton(onClick = {
-                    looper.clear()
+                    looper.clear(selectedSlot)
                     slotStates[selectedSlot] = LooperState.IDLE
                     slotLengths[selectedSlot] = 0f
                 }) { Text("CLEAR") }
