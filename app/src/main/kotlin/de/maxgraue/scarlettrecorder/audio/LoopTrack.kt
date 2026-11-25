@@ -35,6 +35,17 @@ class LoopTrack {
         }
     }
 
+    fun resizeTo(length: Int) {
+        if (length <= 0 || samples.isEmpty()) return
+        samples = samples.copyOf(length)
+        position %= samples.size
+        state = LoopTrackState.PLAYING
+    }
+
+    fun alignTo(samplePosition: Int) {
+        if (samples.isNotEmpty()) position = samplePosition.mod(samples.size)
+    }
+
     fun toggleOverdub() {
         if (samples.isNotEmpty()) {
             state = if (state == LoopTrackState.OVERDUBBING) LoopTrackState.PLAYING else LoopTrackState.OVERDUBBING
