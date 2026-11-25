@@ -137,11 +137,10 @@ class MainActivity : ComponentActivity() {
                     })
                     Text("Software-Monitoring über USB")
                 }
-                Text("EQ " + recorder.effects.settings.eq + " · Compressor " + recorder.effects.settings.compressor + " · Gate " + recorder.effects.settings.gate, color = Color.Gray, fontSize = 12.sp)
+                Text("EQ " + recorder.effects.settings.eq + " · Compressor " + recorder.effects.settings.compressor, color = Color.Gray, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(onClick = { recorder.effects.settings.eq = (recorder.effects.settings.eq + 0.1f).coerceAtMost(1f) }) { Text("EQ +") }
                     TextButton(onClick = { recorder.effects.settings.compressor = (recorder.effects.settings.compressor + 0.1f).coerceAtMost(0.9f) }) { Text("Comp +") }
-                    TextButton(onClick = { recorder.effects.settings.gate = (recorder.effects.settings.gate + 0.01f).coerceAtMost(0.2f) }) { Text("Gate +") }
                 }
                 Text(if (audioError.isNotEmpty()) audioError else if (recording) "Aufnahme · ${seconds}s" else "Bereit für Aufnahme", color = if (recording) Scarlett else Color.Gray)
                 Button(onClick = {
@@ -166,3 +165,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
