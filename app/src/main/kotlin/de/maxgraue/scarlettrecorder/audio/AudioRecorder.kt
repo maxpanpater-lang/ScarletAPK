@@ -16,7 +16,6 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
     val error = MutableStateFlow("")
     val elapsedSeconds = MutableStateFlow(0L)
     @Volatile var monitorEnabled = false
-    val effects = AudioEffects()
     private var record: AudioRecord? = null
     private var thread: Thread? = null
     private val running = AtomicBoolean(false)
@@ -83,7 +82,6 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                                 buffer[i * 2 + 1] = mono[i]
                             }
                         }
-                        effects.process(buffer, n)
                         monitor.write(buffer, 0, n, AudioTrack.WRITE_BLOCKING)
                     }
                     frames += n / 2
@@ -114,3 +112,4 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
         }
     }
 }
+
