@@ -33,6 +33,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import de.maxgraue.scarlettrecorder.audio.Mp3Exporter
+import de.maxgraue.scarlettrecorder.audio.LooperEngine
+import de.maxgraue.scarlettrecorder.audio.LooperState
 
 private val Bg = Color(0xFF101114)
 private val Card = Color(0xFF1B1D22)
@@ -120,7 +122,7 @@ class MainActivity : ComponentActivity() {
                         FilterChip(selected = page == item, onClick = { page = item }, label = { Text(item, fontSize = 11.sp) })
                     }
                 }
-                if (page == "Looper") { LooperPage(); return@Column }
+                if (page == "Looper") { LooperPage(context); return@Column }
                 if (page == "Mixer") { MixerPage(); return@Column }
                 if (page == "Effects") { EffectsPage(recorder); return@Column }
                 if (page == "Recordings") { TextButton(onClick = { showRecordings = true }) { Text("Open recordings") }; return@Column }
@@ -163,7 +165,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun LooperPage() {
+@Composable private fun LooperPage(context: android.content.Context) {
+    val looper = remember { LooperEngine() }
+    val state by looper.state.collectAsState()
+    val length by looper.loopSeconds.collectAsState()
+    DisposableEffect(looper) { onDispose { looper.stop() } }
     var bpm by remember { mutableStateOf(120f) }
     var playing by remember { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Card)) {
@@ -175,7 +181,18 @@ class MainActivity : ComponentActivity() {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { playing = !playing }) { Text(if (playing) "STOP" else "METRONOME") }; OutlinedButton(onClick = {}) { Text("COUNT-IN") } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = {}) { Text("RECORD LOOP") }; OutlinedButton(onClick = {}) { Text("OVERDUB") } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = {}) { Text("UNDO") }; OutlinedButton(onClick = {}) { Text("CLEAR") } }
-            Text("Loop 1 · ready", color = Color.Gray)
+            Text("State: " + state.name + " · Loop length: " + "%.2f s".format(length), color = Color.Gray)
+            Button(onClick = {
+                val audio = context.getSystemService(AudioManager::class.java)
+                val input = audio.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+                val output = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+                if (input != null && output != null) looper.start(input, output)
+            }) { Text("START LOOP") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { looper.finishLoop() }) { Text("CLOSE LOOP") }
+                OutlinedButton(onClick = { looper.toggleOverdub() }) { Text(if (state == LooperState.OVERDUBBING) "STOP OVERDUB" else "OVERDUB") }
+                OutlinedButton(onClick = { looper.clear() }) { Text("CLEAR") }
+            }
         }
     }
 }
