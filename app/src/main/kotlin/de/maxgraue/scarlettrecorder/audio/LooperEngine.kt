@@ -65,7 +65,7 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
                     val overdub = if (state.value == LooperState.OVERDUBBING) activeSlot else null
                     val mixed = mixer.mix(buffer, n, overdub)
                     mixed.copyInto(outputBuffer, 0, 0, n)
-                    if (metronomeEnabled && state.value != LooperState.RECORDING) {
+                    if (metronomeEnabled) {
                         val beatLength = (sampleRate * 60f / bpm.coerceIn(40f, 220f)).toLong().coerceAtLeast(1)
                         for (i in 0 until n) {
                             val beatPosition = metronomeSample % beatLength
@@ -102,8 +102,18 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
     fun finishLoop(slot: Int = activeSlot) {
         if (slot !in mixer.tracks.indices) return
         activeSlot = slot
-        mixer.tracks[slot].finishRecording()
-        state.value = if (mixer.tracks[slot].samples.isNotEmpty()) LooperState.PLAYING else LooperState.IDLE
+        val track = mixer.tracks[slot]
+        track.finishRecording()
+        if (track.samples.isNotEmpty()) {
+            if (mixer.masterLength == 0) {
+                val beat = (sampleRate * 60f / bpm.coerceIn(40f, 220f)).toInt().coerceAtLeast(1)
+                val bar = beat * 4
+                mixer.masterLength = ((track.samples.size + bar / 2) / bar * bar).coerceAtLeast(bar)
+            }
+            track.resizeTo(mixer.masterLength)
+            mixer.alignTrack(slot)
+        }
+        state.value = if (track.samples.isNotEmpty()) LooperState.PLAYING else LooperState.IDLE
     }
 
     fun toggleOverdub(slot: Int = activeSlot) {
@@ -116,6 +126,7 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
     fun clear(slot: Int = activeSlot) {
         if (slot !in mixer.tracks.indices) return
         mixer.tracks[slot].clear()
+        if (mixer.tracks.none { it.samples.isNotEmpty() }) mixer.masterLength = 0
         if (slot == activeSlot) {
             loopSeconds.value = 0f
             loopProgress.value = 0f
