@@ -32,11 +32,18 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
         thread = Thread({
             val buffer = ShortArray(size)
             val captured = ArrayList<Short>(sampleRate * 4)
+            var loopPrepared = false
             try {
                 while (running.get()) {
                     val n = recorder.read(buffer, 0, buffer.size)
                     if (n <= 0) break
                     if (state.value == LooperState.RECORDING) for (i in 0 until n) captured.add(buffer[i])
+                    if (state.value != LooperState.RECORDING && !loopPrepared && captured.isNotEmpty()) {
+                        loop = ShortArray(captured.size) { captured[it] }
+                        loopLength = loop.size
+                        loopSeconds.value = loopLength.toFloat() / (sampleRate * 2)
+                        loopPrepared = true
+                    }
                     if ((state.value == LooperState.PLAYING || state.value == LooperState.OVERDUBBING) && loopLength > 0) {
                         val out = ShortArray(n)
                         for (i in 0 until n) {
@@ -50,7 +57,7 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
                 }
             } catch (failure: Exception) { error.value = failure.message ?: "Looper error" }
             finally { recorder.stop(); recorder.release(); track.stop(); track.release(); state.value = LooperState.IDLE; running.set(false) }
-            if (captured.isNotEmpty()) { loop = ShortArray(captured.size) { captured[it] }; loopLength = loop.size; loopSeconds.value = loopLength.toFloat() / (sampleRate * 2); state.value = LooperState.PLAYING }
+            if (captured.isNotEmpty() && !loopPrepared) { loop = ShortArray(captured.size) { captured[it] }; loopLength = loop.size; loopSeconds.value = loopLength.toFloat() / (sampleRate * 2) }
         }, "scarlett-looper")
         thread!!.start(); return true
     }
