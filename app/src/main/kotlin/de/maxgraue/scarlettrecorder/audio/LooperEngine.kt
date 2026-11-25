@@ -13,6 +13,7 @@ enum class LooperState { IDLE, RECORDING, PLAYING, OVERDUBBING }
 class LooperEngine(private val sampleRate: Int = 48_000) {
     val state = MutableStateFlow(LooperState.IDLE)
     val loopSeconds = MutableStateFlow(0f)
+    val loopProgress = MutableStateFlow(0f)
     val error = MutableStateFlow("")
     private val running = AtomicBoolean(false)
     private var thread: Thread? = null
@@ -75,6 +76,7 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
                                 metronomeSample++
                             }
                             playbackIndex = if (index + 1 == loopLength) 0 else index + 1
+                            if (i == n - 1) loopProgress.value = playbackIndex.toFloat() / loopLength.toFloat()
                         }
                         track.write(output, 0, n, AudioTrack.WRITE_BLOCKING)
                     }
@@ -92,6 +94,6 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
     }
     fun finishLoop() { if (state.value == LooperState.RECORDING) state.value = LooperState.PLAYING }
     fun toggleOverdub() { if (loopLength > 0) state.value = if (state.value == LooperState.OVERDUBBING) LooperState.PLAYING else LooperState.OVERDUBBING }
-    fun clear() { loop = ShortArray(0); loopLength = 0; playbackIndex = 0; loopSeconds.value = 0f; state.value = LooperState.IDLE }
+    fun clear() { loop = ShortArray(0); loopLength = 0; playbackIndex = 0; loopSeconds.value = 0f; loopProgress.value = 0f; state.value = LooperState.IDLE }
     fun stop() { running.set(false); input?.stop(); thread?.join(1500); thread = null; input = null; state.value = LooperState.IDLE }
 }
