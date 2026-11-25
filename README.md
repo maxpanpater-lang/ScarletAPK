@@ -13,13 +13,13 @@ Android recording app for USB-C Scarlett interfaces.
 
 ## MP3-Export
 
-Die Originalaufnahme wird immer verlustfrei als WAV gespeichert. MP3 wird erst beim Export erzeugt. Der Export nutzt `MediaCodec` mit `audio/mpeg` und schreibt die erzeugten MP3-Frames direkt in die Datei. Da dieser Encoder nicht auf jedem Android-Gerät angeboten wird, bleibt WAV immer verfügbar und der Export liefert bei fehlender Unterstützung einen verständlichen Fehler.
+The original recording is always stored as lossless WAV. MP3 is created during export with the bundled encoder. WAV remains available if an export fails.
 
 ## Nächste technische Schritte
 
 1. USB-Geräteliste und Permission-Flow
 2. echte Kanalparameter aus dem Scarlett auslesen
-3. AudioRecord/Oboe-Aufnahmepipeline
+3. AudioRecord/Oboe recording pipeline
 4. WAV-Writer und Pegelmessung
 5. MP3-Exportpipeline mit 128/192/256/320 kbps
 6. Tests mit Scarlett Solo, 2i2 und 4i4
