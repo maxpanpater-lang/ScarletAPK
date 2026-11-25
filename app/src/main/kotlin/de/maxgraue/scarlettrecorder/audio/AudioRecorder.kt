@@ -16,6 +16,8 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
     val error = MutableStateFlow("")
     val elapsedSeconds = MutableStateFlow(0L)
     @Volatile var monitorEnabled = false
+    @Volatile var metronomeEnabled = false
+    @Volatile var bpm = 120f
     private var record: AudioRecord? = null
     private var thread: Thread? = null
     private val running = AtomicBoolean(false)
@@ -44,6 +46,7 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
             val right = ShortArray(min / 2)
             var frames = 0L
             var monitor: AudioTrack? = null
+            var metronomeSample = 0L
             val wavQueue = wav?.let { PcmWriteQueue(it) }
             val secondQueue = second?.let { PcmWriteQueue(it) }
             try {
@@ -88,6 +91,20 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                             for (i in 0 until n / 2) {
                                 buffer[i * 2] = mono[i]
                                 buffer[i * 2 + 1] = mono[i]
+                            }
+                        }
+                        if (metronomeEnabled) {
+                            val beatLength = (sampleRate * 60f / bpm.coerceIn(40f, 240f)).toLong().coerceAtLeast(1)
+                            for (i in 0 until n) {
+                                val beatPosition = metronomeSample % beatLength
+                                if (beatPosition < sampleRate / 180) {
+                                    val beat = (metronomeSample / beatLength) % 4
+                                    val envelope = 1f - beatPosition.toFloat() / (sampleRate / 180f)
+                                    val level = if (beat == 0L) 10500f else 6500f
+                                    val click = (envelope * level).toInt()
+                                    buffer[i] = (buffer[i].toInt() + click).coerceAtMost(32767).toShort()
+                                }
+                                metronomeSample++
                             }
                         }
                         monitor.write(buffer, 0, n, AudioTrack.WRITE_BLOCKING)
