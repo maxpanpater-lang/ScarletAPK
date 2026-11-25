@@ -186,7 +186,7 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("LIVE LOOPER", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("Tap: record/stop · double-tap: overdub · hold: delete", color = Color.Gray, fontSize = 12.sp)
-            Text("BPM \${bpm.toInt()}", color = Color.White)
+            Text("BPM ${bpm.toInt()}", color = Color.White)
             Slider(value = bpm, onValueChange = { bpm = it; looper.bpm = it }, valueRange = 40f..220f)
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -239,15 +239,15 @@ class MainActivity : ComponentActivity() {
                             drawArc(if (slotStates[slot] == LooperState.RECORDING) Scarlett else Color(0xFF62C978), -90f, sweep, false, style = Stroke(10f, cap = StrokeCap.Round))
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("\${slot + 1}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text("${slot + 1}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                             Text(slotStates[slot].name, color = Color.LightGray, fontSize = 9.sp)
                         }
                     }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Selected loop: \${selectedSlot + 1}", color = Color.Gray)
-                Text("\${"%.2f".format(length)} s", color = Color.Gray)
+                Text("Selected loop: ${selectedSlot + 1}", color = Color.Gray)
+                Text("${"%.2f".format(length)} s", color = Color.Gray)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { metronomeOn = !metronomeOn; looper.metronomeEnabled = metronomeOn; looper.bpm = bpm }) {
@@ -259,7 +259,7 @@ class MainActivity : ComponentActivity() {
                     slotLengths[selectedSlot] = 0f
                 }) { Text("CLEAR") }
             }
-            Text("State: \${state.name} · Loop length: \${"%.2f".format(length)} s", color = Color.Gray)
+            Text("State: ${state.name} · Loop length: ${"%.2f".format(length)} s", color = Color.Gray)
         }
     }
 }
