@@ -26,7 +26,12 @@ class RecordingService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (active.value) return START_NOT_STICKY
+        if (active.value) {
+            recorder.stop()
+            active.value = false
+            monitoringActive.value = false
+            recordingActive.value = false
+        }
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("recording", "Recording", NotificationManager.IMPORTANCE_LOW))
         val stop = PendingIntent.getService(this, 1, Intent(this, RecordingService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE)
