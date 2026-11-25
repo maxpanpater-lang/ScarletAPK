@@ -51,13 +51,13 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                         .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
                         .setBufferSizeInBytes(maxOf(min * 2, AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)))
                         .build()
-                    check(monitor.setPreferredDevice(output)) { "USB-Monitoring-Ausgang nicht verfügbar" }
+                    check(monitor.setPreferredDevice(output)) { "USB monitoring output unavailable" }
                     monitor.play()
                 }
                 while (running.get()) {
                     val n = r.read(buffer, 0, buffer.size)
-                    check(n > 0 && n % 2 == 0) { "Audioeingang unterbrochen ($n)" }
-                    check(r.routedDevice?.id == device.id) { "USB-Audioverbindung unterbrochen" }
+                    check(n > 0 && n % 2 == 0) { "Audio input interrupted ($n)" }
+                    check(r.routedDevice?.id == device.id) { "USB audio connection interrupted" }
                     var peakLeft = 0
                     var peakRight = 0
                     for (i in 0 until n / 2) {
@@ -88,14 +88,14 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                     elapsedSeconds.value = frames / sampleRate
                 }
             } catch (failure: Exception) {
-                error.value = failure.message ?: "Aufnahmefehler"
+                error.value = failure.message ?: "Recording error"
             } finally {
                 running.set(false)
                 runCatching { r.stop() }
                 r.release()
                 runCatching { monitor?.stop() }
                 monitor?.release()
-                runCatching { wav?.close() }.onFailure { error.value = "WAV konnte nicht abgeschlossen werden" }
+                runCatching { wav?.close() }.onFailure { error.value = "WAV could not be finalized" }
                 runCatching { second?.close() }
                 levels.value = Pair(0f, 0f)
             }
