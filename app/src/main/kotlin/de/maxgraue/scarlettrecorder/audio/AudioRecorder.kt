@@ -50,6 +50,7 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
                         .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
                         .setBufferSizeInBytes(maxOf(min * 2, AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)))
+                        .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                         .build()
                     check(monitor.setPreferredDevice(output)) { "USB monitoring output unavailable" }
                     monitor.play()
@@ -57,7 +58,12 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                 while (running.get()) {
                     val n = r.read(buffer, 0, buffer.size)
                     check(n > 0 && n % 2 == 0) { "Audio input interrupted ($n)" }
-                    check(r.routedDevice?.id == device.id) { "USB audio connection interrupted" }
+                    // Android can briefly report null while USB routing is refreshed.
+                    // Only a confirmed different device is treated as disconnect.
+                    val routedInput = r.routedDevice
+                    if (routedInput != null && routedInput.id != device.id) {
+                        throw IllegalStateException("USB audio connection interrupted")
+                    }
                     var peakLeft = 0
                     var peakRight = 0
                     for (i in 0 until n / 2) {
@@ -112,4 +118,3 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
         }
     }
 }
-
