@@ -15,85 +15,120 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
     val loopSeconds = MutableStateFlow(0f)
     val loopProgress = MutableStateFlow(0f)
     val error = MutableStateFlow("")
+    val mixer = MultiTrackLooper(4)
     private val running = AtomicBoolean(false)
     private var thread: Thread? = null
     private var input: AudioRecord? = null
-    private var loop = ShortArray(0)
-    private var loopLength = 0
-    @Volatile private var playbackIndex = 0
+    @Volatile private var activeSlot = 0
     @Volatile var metronomeEnabled = false
     @Volatile var bpm = 120f
 
-    fun start(device: AudioDeviceInfo, output: AudioDeviceInfo): Boolean {
-        if (running.get()) return false
+    fun start(device: AudioDeviceInfo, output: AudioDeviceInfo, slot: Int = activeSlot): Boolean {
+        if (slot !in mixer.tracks.indices) return false
+        activeSlot = slot
+        mixer.tracks[slot].beginRecording()
+        state.value = LooperState.RECORDING
+        if (running.get()) return true
+
         val size = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT)
         if (size <= 0) return false
         val recorder = AudioRecord(MediaRecorder.AudioSource.DEFAULT, sampleRate, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT, size * 2)
-        if (recorder.state != AudioRecord.STATE_INITIALIZED || !recorder.setPreferredDevice(device)) { recorder.release(); return false }
-        val track = AudioTrack.Builder().setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build()).setBufferSizeInBytes(size * 2).build()
-        if (!track.setPreferredDevice(output)) { recorder.release(); track.release(); return false }
-        input = recorder; running.set(true); recorder.startRecording(); track.play(); state.value = LooperState.RECORDING
+        if (recorder.state != AudioRecord.STATE_INITIALIZED || !recorder.setPreferredDevice(device)) {
+            recorder.release()
+            return false
+        }
+        val track = AudioTrack.Builder()
+            .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+            .setBufferSizeInBytes(size * 2)
+            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            .build()
+        if (!track.setPreferredDevice(output)) {
+            recorder.release()
+            track.release()
+            return false
+        }
+        input = recorder
+        running.set(true)
+        recorder.startRecording()
+        track.play()
         thread = Thread({
             val buffer = ShortArray(size)
-            // Keep capture primitive-only. ArrayList<Short> boxes every sample and
-            // creates avoidable GC pressure on the real-time thread.
-            var captured = ShortArray(sampleRate * 2 * 8)
-            var capturedCount = 0
-            val output = ShortArray(size)
+            val outputBuffer = ShortArray(size)
             var metronomeSample = 0L
-            var loopPrepared = false
             try {
                 while (running.get()) {
                     val n = recorder.read(buffer, 0, buffer.size)
                     if (n <= 0) break
-                    if (state.value == LooperState.RECORDING) {
-                        if (capturedCount + n > captured.size) {
-                            captured = captured.copyOf((captured.size * 1.5f).toInt().coerceAtLeast(capturedCount + n))
-                        }
-                        buffer.copyInto(captured, capturedCount, 0, n)
-                        capturedCount += n
-                    }
-                    if (state.value != LooperState.RECORDING && !loopPrepared && capturedCount > 0) {
-                        loop = captured.copyOf(capturedCount)
-                        loopLength = loop.size
-                        loopSeconds.value = loopLength.toFloat() / (sampleRate * 2)
-                        playbackIndex = 0
-                        loopPrepared = true
-                    }
-                    if ((state.value == LooperState.PLAYING || state.value == LooperState.OVERDUBBING) && loopLength > 0) {
+                    val selected = mixer.tracks[activeSlot]
+                    if (selected.state == LoopTrackState.RECORDING) selected.append(buffer, n)
+                    java.util.Arrays.fill(outputBuffer, 0, n, 0.toShort())
+                    val overdub = if (state.value == LooperState.OVERDUBBING) activeSlot else null
+                    val mixed = mixer.mix(buffer, n, overdub)
+                    mixed.copyInto(outputBuffer, 0, 0, n)
+                    if (metronomeEnabled && state.value != LooperState.RECORDING) {
+                        val beatLength = (sampleRate * 60f / bpm.coerceIn(40f, 220f)).toLong().coerceAtLeast(1)
                         for (i in 0 until n) {
-                            val index = playbackIndex
-                            val mixed = if (state.value == LooperState.OVERDUBBING) loop[index].toInt() + buffer[i].toInt() / 2 else loop[index].toInt()
-                            output[i] = mixed.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-                            if (state.value == LooperState.OVERDUBBING) loop[index] = output[i]
-                            if (metronomeEnabled) {
-                                val beatLength = (sampleRate * 60f / bpm.coerceIn(40f, 220f)).toLong().coerceAtLeast(1)
-                                val beatPosition = metronomeSample % beatLength
-                                if (beatPosition < sampleRate / 160) {
-                                    val click = ((1f - beatPosition.toFloat() / (sampleRate / 160f)) * 9000f).toInt()
-                                    output[i] = (output[i].toInt() + click).coerceAtMost(32767).toShort()
-                                }
-                                metronomeSample++
+                            val beatPosition = metronomeSample % beatLength
+                            if (beatPosition < sampleRate / 180) {
+                                val beatNumber = (metronomeSample / beatLength) % 4
+                                val envelope = 1f - beatPosition.toFloat() / (sampleRate / 180f)
+                                val clickLevel = if (beatNumber == 0L) 12000f else 7500f
+                                val click = (envelope * clickLevel).toInt()
+                                outputBuffer[i] = (outputBuffer[i].toInt() + click).coerceAtMost(32767).toShort()
                             }
-                            playbackIndex = if (index + 1 == loopLength) 0 else index + 1
-                            if (i == n - 1) loopProgress.value = playbackIndex.toFloat() / loopLength.toFloat()
+                            metronomeSample++
                         }
-                        track.write(output, 0, n, AudioTrack.WRITE_BLOCKING)
                     }
+                    track.write(outputBuffer, 0, n, AudioTrack.WRITE_BLOCKING)
+                    val current = mixer.tracks[activeSlot]
+                    loopSeconds.value = current.samples.size.toFloat() / (sampleRate * 2)
+                    loopProgress.value = if (current.samples.isNotEmpty()) current.position.toFloat() / current.samples.size else 0f
                 }
-            } catch (failure: Exception) { error.value = failure.message ?: "Looper error" }
-            finally { recorder.stop(); recorder.release(); track.stop(); track.release(); state.value = LooperState.IDLE; running.set(false) }
-            if (capturedCount > 0 && !loopPrepared) {
-                loop = captured.copyOf(capturedCount)
-                loopLength = loop.size
-                playbackIndex = 0
-                loopSeconds.value = loopLength.toFloat() / (sampleRate * 2)
+            } catch (failure: Exception) {
+                error.value = failure.message ?: "Looper error"
+            } finally {
+                runCatching { recorder.stop() }
+                recorder.release()
+                runCatching { track.stop() }
+                track.release()
+                running.set(false)
+                state.value = LooperState.IDLE
             }
-        }, "scarlett-looper")
-        thread!!.start(); return true
+        }, "scarlett-multilooper")
+        thread!!.start()
+        return true
     }
-    fun finishLoop() { if (state.value == LooperState.RECORDING) state.value = LooperState.PLAYING }
-    fun toggleOverdub() { if (loopLength > 0) state.value = if (state.value == LooperState.OVERDUBBING) LooperState.PLAYING else LooperState.OVERDUBBING }
-    fun clear() { loop = ShortArray(0); loopLength = 0; playbackIndex = 0; loopSeconds.value = 0f; loopProgress.value = 0f; state.value = LooperState.IDLE }
-    fun stop() { running.set(false); input?.stop(); thread?.join(1500); thread = null; input = null; state.value = LooperState.IDLE }
+
+    fun finishLoop(slot: Int = activeSlot) {
+        if (slot !in mixer.tracks.indices) return
+        activeSlot = slot
+        mixer.tracks[slot].finishRecording()
+        state.value = if (mixer.tracks[slot].samples.isNotEmpty()) LooperState.PLAYING else LooperState.IDLE
+    }
+
+    fun toggleOverdub(slot: Int = activeSlot) {
+        if (slot !in mixer.tracks.indices) return
+        activeSlot = slot
+        mixer.tracks[slot].toggleOverdub()
+        state.value = if (mixer.tracks[slot].state == LoopTrackState.OVERDUBBING) LooperState.OVERDUBBING else LooperState.PLAYING
+    }
+
+    fun clear(slot: Int = activeSlot) {
+        if (slot !in mixer.tracks.indices) return
+        mixer.tracks[slot].clear()
+        if (slot == activeSlot) {
+            loopSeconds.value = 0f
+            loopProgress.value = 0f
+            state.value = if (running.get()) LooperState.PLAYING else LooperState.IDLE
+        }
+    }
+
+    fun stop() {
+        running.set(false)
+        runCatching { input?.stop() }
+        thread?.join(1500)
+        thread = null
+        input = null
+        state.value = LooperState.IDLE
+    }
 }
