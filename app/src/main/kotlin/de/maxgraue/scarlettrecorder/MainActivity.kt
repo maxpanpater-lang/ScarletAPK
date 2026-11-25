@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.Canvas
@@ -41,8 +42,10 @@ import de.maxgraue.scarlettrecorder.audio.Mp3Exporter
 import de.maxgraue.scarlettrecorder.audio.LooperEngine
 import de.maxgraue.scarlettrecorder.audio.LooperState
 
-private val Bg = Color(0xFF101114)
-private val Card = Color(0xFF1B1D22)
+private val Bg = Color(0xFFF4F5F7)
+private val Card = Color(0xFFFFFFFF)
+private val DarkBg = Color(0xFF101114)
+private val DarkCard = Color(0xFF1B1D22)
 private val Scarlett = Color(0xFFE3222E)
 
 class MainActivity : ComponentActivity() {
@@ -67,6 +70,7 @@ class MainActivity : ComponentActivity() {
     var page by remember { mutableStateOf("Recorder") }
     var mode by remember { mutableStateOf("Stereo") }
     var monitoring by remember { mutableStateOf(false) }
+    var themeMode by remember { mutableStateOf(0) } // 0 system, 1 light, 2 dark
     var showRecordings by remember { mutableStateOf(false) }
     val exportScope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf(false) }
@@ -118,10 +122,10 @@ class MainActivity : ComponentActivity() {
     val levels by recorder.levels.collectAsState()
     val seconds by recorder.elapsedSeconds.collectAsState()
     val audioError by recorder.error.collectAsState()
-    MaterialTheme(colorScheme = darkColorScheme(primary = Scarlett, background = Bg, surface = Card)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = Bg) {
+    val dark = when (themeMode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }\n    val colors = if (dark) darkColorScheme(primary = Scarlett, background = DarkBg, surface = DarkCard) else lightColorScheme(primary = Scarlett, background = Bg, surface = Card)\n    MaterialTheme(colorScheme = colors) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("${page.uppercase()}", color = Scarlett, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {\n                    Text("${page.uppercase()}", color = Scarlett, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)\n                    TextButton(onClick = { themeMode = (themeMode + 1) % 3 }) { Text(if (themeMode == 1) "LIGHT" else if (themeMode == 2) "DARK" else "SYSTEM", fontSize = 10.sp) }\n                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("Recorder", "Looper", "Mixer", "Effects", "Recordings").forEach { item ->
                         FilterChip(selected = page == item, onClick = { page = item }, label = { Text(item, fontSize = 11.sp) })
@@ -151,7 +155,7 @@ class MainActivity : ComponentActivity() {
                         monitoring = it
                         recorder.monitorEnabled = it
                         val intent = android.content.Intent(context, RecordingService::class.java)
-                        if (it && !recording) androidx.core.content.ContextCompat.startForegroundService(context, intent.setAction("MONITOR"))
+                        if (it && !recording) androidx.core.content.ContextCompat.startForegroundService(context, intent.setAction("MONITOR").putExtra("mode", mode))
                         else if (!it && recording) context.startService(intent.setAction("STOP"))
                     })
                     Text("USB monitoring")
@@ -194,7 +198,7 @@ class MainActivity : ComponentActivity() {
                     val active = selectedSlot == slot
                     Box(
                         Modifier.weight(1f).aspectRatio(1f)
-                            .pointerInput(slot, state, length) {
+                            .pointerInput(slot) {
                                 detectTapGestures(
                                     onDoubleTap = {
                                         selectedSlot = slot
