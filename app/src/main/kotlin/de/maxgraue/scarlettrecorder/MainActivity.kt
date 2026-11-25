@@ -122,10 +122,15 @@ class MainActivity : ComponentActivity() {
     val levels by recorder.levels.collectAsState()
     val seconds by recorder.elapsedSeconds.collectAsState()
     val audioError by recorder.error.collectAsState()
-    val dark = when (themeMode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }\n    val colors = if (dark) darkColorScheme(primary = Scarlett, background = DarkBg, surface = DarkCard) else lightColorScheme(primary = Scarlett, background = Bg, surface = Card)\n    MaterialTheme(colorScheme = colors) {
+    val dark = when (themeMode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
+    val colors = if (dark) darkColorScheme(primary = Scarlett, background = DarkBg, surface = DarkCard) else lightColorScheme(primary = Scarlett, background = Bg, surface = Card)
+    MaterialTheme(colorScheme = colors) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {\n                    Text("${page.uppercase()}", color = Scarlett, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)\n                    TextButton(onClick = { themeMode = (themeMode + 1) % 3 }) { Text(if (themeMode == 1) "LIGHT" else if (themeMode == 2) "DARK" else "SYSTEM", fontSize = 10.sp) }\n                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("${page.uppercase()}", color = Scarlett, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    TextButton(onClick = { themeMode = (themeMode + 1) % 3 }) { Text(if (themeMode == 1) "LIGHT" else if (themeMode == 2) "DARK" else "SYSTEM", fontSize = 10.sp) }
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("Recorder", "Looper", "Mixer", "Effects", "Recordings").forEach { item ->
                         FilterChip(selected = page == item, onClick = { page = item }, label = { Text(item, fontSize = 11.sp) })
