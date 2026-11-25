@@ -120,7 +120,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { player.reset(); showRecordings = false }) { Text("Close") } })
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)) }) { Text("Open folder") }
+                    TextButton(onClick = { player.reset(); showRecordings = false }) { Text("Close") }
+                }
+            })
     }
     val levels by recorder.levels.collectAsState()
     val seconds by recorder.elapsedSeconds.collectAsState()
@@ -134,9 +139,14 @@ class MainActivity : ComponentActivity() {
                     Text("${page.uppercase()}", color = Scarlett, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     TextButton(onClick = { themeMode = (themeMode + 1) % 3 }) { Text(if (themeMode == 1) "LIGHT" else if (themeMode == 2) "DARK" else "SYSTEM", fontSize = 10.sp) }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     listOf("Recorder", "Looper", "Mixer", "Recordings").forEach { item ->
-                        FilterChip(selected = page == item, onClick = { page = item }, label = { Text(item, fontSize = 11.sp) })
+                        NavigationBarItem(
+                            selected = page == item,
+                            onClick = { page = item },
+                            icon = { Text(item.take(1), fontWeight = FontWeight.Bold) },
+                            label = { Text(item, fontSize = 10.sp) }
+                        )
                     }
                 }
                 if (page == "Looper") { LooperPage(context, looper); return@Column }
@@ -152,7 +162,7 @@ class MainActivity : ComponentActivity() {
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Recording format", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording && !monitoringActive, selected = mode == value, onClick = { mode = value }, label = { Text(value) }) } }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording && !monitoringActive, selected = mode == value, onClick = { if (monitoringActive) { mode = value; val restart = android.content.Intent(context, RecordingService::class.java).setAction("MONITOR").putExtra("mode", value); androidx.core.content.ContextCompat.startForegroundService(context, restart) } else mode = value }, label = { Text(value) }) } }
                         Text("48 kHz · 16 bit · WAV and MP3 export", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     }
                 }
@@ -181,7 +191,10 @@ class MainActivity : ComponentActivity() {
                         androidx.core.content.ContextCompat.startForegroundService(context, intent.putExtra("mode", mode))
                     }.onFailure { recorder.error.value = it.message ?: "Start failed" }
                 }, modifier = Modifier.fillMaxWidth().height(58.dp), colors = ButtonDefaults.buttonColors(containerColor = if (recording) Color(0xFF7B1D25) else Scarlett), shape = RoundedCornerShape(14.dp)) { Text(if (recording) "STOP RECORDING" else "●  START RECORDING", fontWeight = FontWeight.Bold) }
-                TextButton(enabled = !recording && !monitoringActive, onClick = { showRecordings = true }) { Text("Open recordings") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(enabled = !recording && !monitoringActive, onClick = { showRecordings = true }) { Text("Open recordings") }
+                    OutlinedButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)) }) { Text("Open folder") }
+                }
             }
         }
     }
@@ -191,7 +204,7 @@ class MainActivity : ComponentActivity() {
     val state by looper.state.collectAsState()
     val length by looper.loopSeconds.collectAsState()
     val progress by looper.loopProgress.collectAsState()
-    DisposableEffect(looper) { onDispose { looper.stop() } }
+}
     var bpm by remember { mutableStateOf(120f) }
     var metronomeOn by remember { mutableStateOf(false) }
     var selectedSlot by remember { mutableStateOf(0) }
