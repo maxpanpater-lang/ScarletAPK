@@ -204,7 +204,6 @@ class MainActivity : ComponentActivity() {
     val state by looper.state.collectAsState()
     val length by looper.loopSeconds.collectAsState()
     val progress by looper.loopProgress.collectAsState()
-}
     var bpm by remember { mutableStateOf(120f) }
     var metronomeOn by remember { mutableStateOf(false) }
     var selectedSlot by remember { mutableStateOf(0) }
