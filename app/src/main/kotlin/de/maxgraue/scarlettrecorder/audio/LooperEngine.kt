@@ -20,6 +20,8 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
     private var loop = ShortArray(0)
     private var loopLength = 0
     @Volatile private var playbackIndex = 0
+    @Volatile var metronomeEnabled = false
+    @Volatile var bpm = 120f
 
     fun start(device: AudioDeviceInfo, output: AudioDeviceInfo): Boolean {
         if (running.get()) return false
@@ -37,6 +39,7 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
             var captured = ShortArray(sampleRate * 2 * 8)
             var capturedCount = 0
             val output = ShortArray(size)
+            var metronomeSample = 0L
             var loopPrepared = false
             try {
                 while (running.get()) {
@@ -62,6 +65,15 @@ class LooperEngine(private val sampleRate: Int = 48_000) {
                             val mixed = if (state.value == LooperState.OVERDUBBING) loop[index].toInt() + buffer[i].toInt() / 2 else loop[index].toInt()
                             output[i] = mixed.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
                             if (state.value == LooperState.OVERDUBBING) loop[index] = output[i]
+                            if (metronomeEnabled) {
+                                val beatLength = (sampleRate * 60f / bpm.coerceIn(40f, 220f)).toLong().coerceAtLeast(1)
+                                val beatPosition = metronomeSample % beatLength
+                                if (beatPosition < sampleRate / 160) {
+                                    val click = ((1f - beatPosition.toFloat() / (sampleRate / 160f)) * 9000f).toInt()
+                                    output[i] = (output[i].toInt() + click).coerceAtMost(32767).toShort()
+                                }
+                                metronomeSample++
+                            }
                             playbackIndex = if (index + 1 == loopLength) 0 else index + 1
                         }
                         track.write(output, 0, n, AudioTrack.WRITE_BLOCKING)
