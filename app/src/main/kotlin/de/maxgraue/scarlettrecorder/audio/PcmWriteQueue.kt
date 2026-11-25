@@ -5,7 +5,7 @@ import java.util.concurrent.TimeUnit
 
 /** Bounded producer/consumer queue so storage I/O never blocks the audio reader. */
 class PcmWriteQueue(private val writer: WavWriter, capacity: Int = 8) : AutoCloseable {
-    private val queue = LinkedBlockingQueue<ShortArray>(capacity * 32)
+    private val queue = LinkedBlockingQueue<ShortArray>()
     @Volatile private var closed = false
     private val worker = Thread({
         while (!closed || queue.isNotEmpty()) {
@@ -20,9 +20,8 @@ class PcmWriteQueue(private val writer: WavWriter, capacity: Int = 8) : AutoClos
     fun offer(samples: ShortArray, count: Int) {
         if (closed || count <= 0) return
         val copy = samples.copyOf(count)
-        // A full queue means storage is too slow. Drop the newest block instead
-        // of blocking the USB audio thread and causing monitoring glitches.
-        queue.put(copy)
+        // Never drop or block the audio reader. The writer drains this queue independently.
+        queue.add(copy)
     }
 
     override fun close() {
