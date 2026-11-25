@@ -1,0 +1,5 @@
+MP3 encoding uses Jump3r 1.0.5, a Java port of LAME.
+Copyright the Jump3r and LAME contributors.
+License: GNU Lesser General Public License, version 2.1 or later.
+Source: https://repo.maven.apache.org/maven2/de/sciss/jump3r/1.0.5/jump3r-1.0.5-sources.jar
+Project: https://github.com/Sciss/jump3r
