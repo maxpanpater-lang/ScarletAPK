@@ -1,30 +1,36 @@
 # Scarlett Recorder
 
-Android recording app for USB-C Scarlett interfaces.
+Android recording app for USB-C Scarlett interfaces, including the Focusrite Scarlett Solo 3rd Gen.
 
-## Geplant / aktueller Stand
+## Features
 
 - USB audio detection for class-compliant interfaces
-- Stereo and mono recording
-- WAV as the lossless recording format
-- MP3 export with a bundled encoder
-- latenzarmes Monitoring mit Direct-Monitoring-Hinweis und Software-Monitoring
-- dunkle Compose-Oberfläche mit Scarlett-Rot
+- Stereo, mono input 1, mono input 2, and separate mono files
+- WAV recording with MP3 export
+- Background recording with a foreground notification
+- USB monitoring with EQ and compressor
+- Live input meters and recording time
+- Playback, sharing, and export of recordings
+- Looper with loop capture, playback, overdub, clear, BPM, and count-in controls
+- Separate Recorder, Looper, Mixer, Effects, and Recordings pages
 
-## MP3-Export
+## MP3 export
 
-The original recording is always stored as lossless WAV. MP3 is created during export with the bundled encoder. WAV remains available if an export fails.
+The original recording is always stored as lossless WAV. MP3 is created during export with the bundled Jump3r encoder. WAV remains available if an export fails.
 
-## Nächste technische Schritte
+## Audio routing
 
-1. USB-Geräteliste und Permission-Flow
-2. echte Kanalparameter aus dem Scarlett auslesen
-3. AudioRecord/Oboe recording pipeline
-4. WAV-Writer und Pegelmessung
-5. MP3-Exportpipeline mit 128/192/256/320 kbps
-6. Tests mit Scarlett Solo, 2i2 und 4i4
+The app selects the connected USB input and output through Android's audio device routing. The actual channel mapping and monitoring latency must be verified with the connected Scarlett hardware.
 
-## Entwicklung
+## Development
 
-Das Projekt ist für Android Studio und Gradle eingerichtet. Das Repository sollte zunächst privat bleiben, bis die erste Hardware-Testversion funktioniert.
+The project uses Android Studio, Gradle, Kotlin, and Jetpack Compose. GitHub Actions builds a debug APK from the `main` branch.
+
+## Build
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+The generated APK is located at `app/build/outputs/apk/debug/app-debug.apk`.
 
