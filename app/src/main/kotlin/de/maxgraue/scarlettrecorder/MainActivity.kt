@@ -137,11 +137,6 @@ class MainActivity : ComponentActivity() {
                     })
                     Text("Software-Monitoring über USB")
                 }
-                Text("EQ " + recorder.effects.settings.eq + " · Compressor " + recorder.effects.settings.compressor, color = Color.Gray, fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(onClick = { recorder.effects.settings.eq = (recorder.effects.settings.eq + 0.1f).coerceAtMost(1f) }) { Text("EQ +") }
-                    TextButton(onClick = { recorder.effects.settings.compressor = (recorder.effects.settings.compressor + 0.1f).coerceAtMost(0.9f) }) { Text("Comp +") }
-                }
                 Text(if (audioError.isNotEmpty()) audioError else if (recording) "Aufnahme · ${seconds}s" else "Bereit für Aufnahme", color = if (recording) Scarlett else Color.Gray)
                 Button(onClick = {
                     val intent = android.content.Intent(context, RecordingService::class.java)
