@@ -65,11 +65,13 @@ class MainActivity : ComponentActivity() {
 @Composable fun ScarlettRecorderApp(usbAudio: UsbAudioManager) {
     val context = LocalContext.current
     val recorder = RecordingService.recorder
+    val looper = remember { LooperEngine() }
     val recording by RecordingService.recordingActive.collectAsState()
     val monitoringActive by RecordingService.monitoringActive.collectAsState()
     var page by remember { mutableStateOf("Recorder") }
     var mode by remember { mutableStateOf("Stereo") }
     var monitoring by remember { mutableStateOf(false) }
+    var recorderBpm by remember { mutableStateOf(120f) }
     var themeMode by remember { mutableStateOf(0) } // 0 system, 1 light, 2 dark
     var showRecordings by remember { mutableStateOf(false) }
     val exportScope = rememberCoroutineScope()
@@ -132,14 +134,13 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = { themeMode = (themeMode + 1) % 3 }) { Text(if (themeMode == 1) "LIGHT" else if (themeMode == 2) "DARK" else "SYSTEM", fontSize = 10.sp) }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("Recorder", "Looper", "Mixer", "Effects", "Recordings").forEach { item ->
+                    listOf("Recorder", "Looper", "Mixer", "Recordings").forEach { item ->
                         FilterChip(selected = page == item, onClick = { page = item }, label = { Text(item, fontSize = 11.sp) })
                     }
                 }
-                if (page == "Looper") { LooperPage(context); return@Column }
+                if (page == "Looper") { LooperPage(context, looper); return@Column }
                 if (page == "Mixer") { MixerPage(); return@Column }
-                if (page == "Effects") { EffectsPage(recorder); return@Column }
-                if (page == "Recordings") { TextButton(onClick = { showRecordings = true }) { Text("Open recordings") }; return@Column }
+                                if (page == "Recordings") { TextButton(onClick = { showRecordings = true }) { Text("Open recordings") }; return@Column }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column { Text("SCARLETT RECORDER", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 20.sp); Text("USB audio interface", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     val device by usbAudio.device.collectAsState()
@@ -150,7 +151,7 @@ class MainActivity : ComponentActivity() {
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Recording format", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording, selected = mode == value, onClick = { mode = value }, label = { Text(value) }) } }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording && !monitoringActive, selected = mode == value, onClick = { mode = value }, label = { Text(value) }) } }
                         Text("48 kHz · 16 bit · WAV and MP3 export", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     }
                 }
@@ -164,6 +165,12 @@ class MainActivity : ComponentActivity() {
                         else if (!it && recording) context.startService(intent.setAction("STOP"))
                     })
                     Text("USB monitoring")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = recorder.metronomeEnabled, onCheckedChange = { recorder.metronomeEnabled = it; recorder.bpm = recorderBpm })
+                    Text("Metronome")
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(value = recorderBpm.toInt().toString(), onValueChange = { it.toFloatOrNull()?.let { value -> recorderBpm = value.coerceIn(40f, 240f); recorder.bpm = recorderBpm } }, label = { Text("BPM") }, singleLine = true, modifier = Modifier.width(100.dp))
                 }
                 Text(if (audioError.isNotEmpty()) audioError else if (recording) "Recording · ${seconds}s" else if (monitoringActive) "Monitoring active" else "Ready", color = if (recording || monitoringActive) Scarlett else Color.Gray)
                 Button(onClick = {
@@ -179,8 +186,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun LooperPage(context: android.content.Context) {
-    val looper = remember { LooperEngine() }
+@Composable private fun LooperPage(context: android.content.Context, looper: LooperEngine) {
     val state by looper.state.collectAsState()
     val length by looper.loopSeconds.collectAsState()
     val progress by looper.loopProgress.collectAsState()
@@ -208,7 +214,7 @@ class MainActivity : ComponentActivity() {
                                     onDoubleTap = {
                                         selectedSlot = slot
                                         if (slotStates[slot] == LooperState.PLAYING) {
-                                            looper.toggleOverdub()
+                                            looper.toggleOverdub(slot)
                                             slotStates[slot] = LooperState.OVERDUBBING
                                         }
                                     },
