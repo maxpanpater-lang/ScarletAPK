@@ -162,7 +162,7 @@ class MainActivity : ComponentActivity() {
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Recording format", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording && !monitoringActive, selected = mode == value, onClick = { if (monitoringActive) { mode = value; val restart = android.content.Intent(context, RecordingService::class.java).setAction("MONITOR").putExtra("mode", value); androidx.core.content.ContextCompat.startForegroundService(context, restart) } else mode = value }, label = { Text(value) }) } }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording, selected = mode == value, onClick = { if (monitoringActive) { mode = value; val restart = android.content.Intent(context, RecordingService::class.java).setAction("MONITOR").putExtra("mode", value); androidx.core.content.ContextCompat.startForegroundService(context, restart) } else mode = value }, label = { Text(value) }) } }
                         Text("48 kHz · 16 bit · WAV and MP3 export", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     }
                 }
