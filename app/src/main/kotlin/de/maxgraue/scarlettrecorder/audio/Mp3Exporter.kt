@@ -83,7 +83,7 @@ object Mp3Exporter {
                     flags.bWriteVbrTag = false
                     flags.write_id3tag_automatic = false
                     id3.id3tag_init(flags)
-                    check(lame.lame_init_params(flags) >= 0) { "MP3-Encoder konnte nicht starten" }
+                    check(lame.lame_init_params(flags) >= 0) { "MP3 encoder could not start" }
                     input.seek(dataOffset)
                     var remaining = dataSize / (channels * 2)
                     val left = IntArray(1152)
@@ -97,7 +97,7 @@ object Mp3Exporter {
                                 right[i] = if (channels == 2) java.lang.Short.reverseBytes(input.readShort()).toInt() shl 16 else left[i]
                             }
                             val count = lame.lame_encode_buffer_int(flags, left, right, frames, encoded, 0, encoded.size)
-                            check(count >= 0) { "MP3-Kodierung fehlgeschlagen ($count)" }
+                            check(count >= 0) { "MP3 encoding failed ($count)" }
                             output.write(encoded, 0, count)
                             remaining -= frames
                         }
@@ -107,8 +107,9 @@ object Mp3Exporter {
                     }
                 } finally { lame.lame_close(flags) }
             }
-            check(temporary.renameTo(mp3)) { "MP3 konnte nicht gespeichert werden" }
+            check(temporary.renameTo(mp3)) { "MP3 could not be saved" }
             mp3
         } finally { temporary.delete() }
     }
 }
+
