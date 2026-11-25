@@ -20,6 +20,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import de.maxgraue.scarlettrecorder.audio.UsbAudioManager
 import de.maxgraue.scarlettrecorder.audio.AudioRecorder
 import java.io.File
@@ -169,30 +174,92 @@ class MainActivity : ComponentActivity() {
     val looper = remember { LooperEngine() }
     val state by looper.state.collectAsState()
     val length by looper.loopSeconds.collectAsState()
+    val progress by looper.loopProgress.collectAsState()
     DisposableEffect(looper) { onDispose { looper.stop() } }
     var bpm by remember { mutableStateOf(120f) }
-    var playing by remember { mutableStateOf(false) }
+    var metronomeOn by remember { mutableStateOf(false) }
+    var selectedSlot by remember { mutableStateOf(0) }
+    val slotStates = remember { mutableStateListOf(*Array(4) { LooperState.IDLE }) }
+    val slotLengths = remember { mutableStateListOf(*Array(4) { 0f }) }
+
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Card)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("LIVE LOOPER", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text("Metronome and overdub workflow", color = Color.Gray)
-            Text("BPM ${bpm.toInt()}", color = Color.White)
-            Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 40f..220f)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = { playing = !playing; looper.metronomeEnabled = playing; looper.bpm = bpm }) { Text(if (playing) "STOP" else "METRONOME") }; OutlinedButton(onClick = {}) { Text("COUNT-IN") } }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = {}) { Text("RECORD LOOP") }; OutlinedButton(onClick = {}) { Text("OVERDUB") } }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = {}) { Text("UNDO") }; OutlinedButton(onClick = {}) { Text("CLEAR") } }
-            Text("State: " + state.name + " · Loop length: " + "%.2f s".format(length), color = Color.Gray)
-            Button(onClick = {
-                val audio = context.getSystemService(AudioManager::class.java)
-                val input = audio.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
-                val output = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
-                if (input != null && output != null) looper.start(input, output)
-            }) { Text("START LOOP") }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { looper.finishLoop() }) { Text("CLOSE LOOP") }
-                OutlinedButton(onClick = { looper.toggleOverdub() }) { Text(if (state == LooperState.OVERDUBBING) "STOP OVERDUB" else "OVERDUB") }
-                OutlinedButton(onClick = { looper.clear() }) { Text("CLEAR") }
+            Text("Tap: record/stop · double-tap: overdub · hold: delete", color = Color.Gray, fontSize = 12.sp)
+            Text("BPM \${bpm.toInt()}", color = Color.White)
+            Slider(value = bpm, onValueChange = { bpm = it; looper.bpm = it }, valueRange = 40f..220f)
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(4) { slot ->
+                    val active = selectedSlot == slot
+                    Box(
+                        Modifier.weight(1f).aspectRatio(1f)
+                            .pointerInput(slot, state, length) {
+                                detectTapGestures(
+                                    onDoubleTap = {
+                                        selectedSlot = slot
+                                        if (slotStates[slot] == LooperState.PLAYING) {
+                                            looper.toggleOverdub()
+                                            slotStates[slot] = LooperState.OVERDUBBING
+                                        }
+                                    },
+                                    onLongPress = {
+                                        if (selectedSlot == slot) looper.clear()
+                                        slotStates[slot] = LooperState.IDLE
+                                        slotLengths[slot] = 0f
+                                    },
+                                    onTap = {
+                                        selectedSlot = slot
+                                        when (slotStates[slot]) {
+                                            LooperState.IDLE -> {
+                                                val audio = context.getSystemService(AudioManager::class.java)
+                                                val input = audio.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+                                                val output = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+                                                if (input != null && output != null && looper.start(input, output)) slotStates[slot] = LooperState.RECORDING
+                                            }
+                                            LooperState.RECORDING -> {
+                                                looper.finishLoop()
+                                                slotStates[slot] = LooperState.PLAYING
+                                                slotLengths[slot] = length
+                                            }
+                                            LooperState.PLAYING, LooperState.OVERDUBBING -> {
+                                                looper.toggleOverdub()
+                                                slotStates[slot] = if (slotStates[slot] == LooperState.OVERDUBBING) LooperState.PLAYING else LooperState.OVERDUBBING
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                            .background(if (active) Color(0xFF3B2025) else Card, RoundedCornerShape(18.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(Modifier.fillMaxSize().padding(6.dp)) {
+                            drawArc(Color(0xFF3A3D44), -90f, 360f, false, style = Stroke(10f, cap = StrokeCap.Round))
+                            val sweep = if (active) progress * 360f else if (slotLengths[slot] > 0f) 360f else 0f
+                            drawArc(if (slotStates[slot] == LooperState.RECORDING) Scarlett else Color(0xFF62C978), -90f, sweep, false, style = Stroke(10f, cap = StrokeCap.Round))
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("\${slot + 1}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text(slotStates[slot].name, color = Color.LightGray, fontSize = 9.sp)
+                        }
+                    }
+                }
             }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Selected loop: \${selectedSlot + 1}", color = Color.Gray)
+                Text("\${"%.2f".format(length)} s", color = Color.Gray)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { metronomeOn = !metronomeOn; looper.metronomeEnabled = metronomeOn; looper.bpm = bpm }) {
+                    Text(if (metronomeOn) "STOP METRONOME" else "METRONOME")
+                }
+                OutlinedButton(onClick = {
+                    looper.clear()
+                    slotStates[selectedSlot] = LooperState.IDLE
+                    slotLengths[selectedSlot] = 0f
+                }) { Text("CLEAR") }
+            }
+            Text("State: \${state.name} · Loop length: \${"%.2f".format(length)} s", color = Color.Gray)
         }
     }
 }
