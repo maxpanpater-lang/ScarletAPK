@@ -44,6 +44,8 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
             val right = ShortArray(min / 2)
             var frames = 0L
             var monitor: AudioTrack? = null
+            val wavQueue = wav?.let { PcmWriteQueue(it) }
+            val secondQueue = second?.let { PcmWriteQueue(it) }
             try {
                 if (output != null) {
                     monitor = AudioTrack.Builder()
@@ -74,11 +76,11 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                     }
                     levels.value = Pair(peakLeft / 32768f, peakRight / 32768f)
                     when (mode) {
-                        "Stereo" -> wav?.writePcm16(buffer, n)
-                        "Mono 2" -> wav?.writePcm16(right, n / 2)
-                        else -> wav?.writePcm16(left, n / 2)
+                        "Stereo" -> wavQueue?.offer(buffer, n)
+                        "Mono 2" -> wavQueue?.offer(right, n / 2)
+                        else -> wavQueue?.offer(left, n / 2)
                     }
-                    second?.writePcm16(right, n / 2)
+                    secondQueue?.offer(right, n / 2)
                     if (monitorEnabled && monitor != null) {
                         check(monitor.routedDevice == null || monitor.routedDevice?.id == output?.id) { "Monitoring-Ausgang getrennt" }
                         if (mode == "Mono 1" || mode == "Mono 2") {
@@ -101,8 +103,8 @@ class AudioRecorder(private val sampleRate: Int = 48_000, private val channels: 
                 r.release()
                 runCatching { monitor?.stop() }
                 monitor?.release()
-                runCatching { wav?.close() }.onFailure { error.value = "WAV could not be finalized" }
-                runCatching { second?.close() }
+                runCatching { wavQueue?.close() }.onFailure { error.value = "WAV could not be finalized" }
+                runCatching { secondQueue?.close() }
                 levels.value = Pair(0f, 0f)
             }
         }, "scarlett-recorder")
