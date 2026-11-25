@@ -1,13 +1,13 @@
 # Scarlett Recorder
 
-Android-Aufnahme-App für USB-C-Scarlett-Interfaces.
+Android recording app for USB-C Scarlett interfaces.
 
 ## Geplant / aktueller Stand
 
-- USB-Audio-Erkennung für class-compliant Interfaces
-- Stereo- und Mono-Aufnahme
-- WAV als natives Aufnahmeformat
-- MP3-Export nach der Aufnahme über Androids `audio/mpeg`-Encoder, mit sauberem WAV-Fallback
+- USB audio detection for class-compliant interfaces
+- Stereo and mono recording
+- WAV as the lossless recording format
+- MP3 export with a bundled encoder
 - latenzarmes Monitoring mit Direct-Monitoring-Hinweis und Software-Monitoring
 - dunkle Compose-Oberfläche mit Scarlett-Rot
 
@@ -27,3 +27,4 @@ Die Originalaufnahme wird immer verlustfrei als WAV gespeichert. MP3 wird erst b
 ## Entwicklung
 
 Das Projekt ist für Android Studio und Gradle eingerichtet. Das Repository sollte zunächst privat bleiben, bis die erste Hardware-Testversion funktioniert.
+
