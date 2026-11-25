@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
     val context = LocalContext.current
     val recorder = RecordingService.recorder
     val looper = remember { LooperEngine() }
+    DisposableEffect(looper) { onDispose { looper.stop() } }
     val recording by RecordingService.recordingActive.collectAsState()
     val monitoringActive by RecordingService.monitoringActive.collectAsState()
     var page by remember { mutableStateOf("Recorder") }
