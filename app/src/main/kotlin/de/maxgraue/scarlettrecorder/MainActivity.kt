@@ -8,6 +8,11 @@ import android.media.AudioDeviceInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,6 +77,7 @@ class MainActivity : ComponentActivity() {
     var page by remember { mutableStateOf("Recorder") }
     var mode by remember { mutableStateOf("Stereo") }
     var monitoring by remember { mutableStateOf(false) }
+    var recorderMetronome by remember { mutableStateOf(recorder.metronomeEnabled) }
     var recorderBpm by remember { mutableStateOf(120f) }
     var themeMode by remember { mutableStateOf(0) } // 0 system, 1 light, 2 dark
     var showRecordings by remember { mutableStateOf(false) }
@@ -133,14 +139,11 @@ class MainActivity : ComponentActivity() {
     val dark = when (themeMode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
     val colors = if (dark) darkColorScheme(primary = Scarlett, background = DarkBg, surface = DarkCard) else lightColorScheme(primary = Scarlett, background = Bg, surface = Card)
     MaterialTheme(colorScheme = colors) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("${page.uppercase()}", color = Scarlett, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                    TextButton(onClick = { themeMode = (themeMode + 1) % 3 }) { Text(if (themeMode == 1) "LIGHT" else if (themeMode == 2) "DARK" else "SYSTEM", fontSize = 10.sp) }
-                }
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    listOf("Recorder", "Looper", "Mixer", "Recordings").forEach { item ->
+                    listOf("Recorder", "Looper", "Mixer", "Effects", "Recordings").forEach { item ->
                         NavigationBarItem(
                             selected = page == item,
                             onClick = { page = item },
@@ -149,48 +152,63 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+
+            }
+        ) { insets ->
+            Column(Modifier.padding(insets).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("SCARLETT", color = MaterialTheme.colorScheme.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                    TextButton(onClick = { themeMode = (themeMode + 1) % 3 }) { Text(if (themeMode == 1) "LIGHT" else if (themeMode == 2) "DARK" else "SYSTEM", fontSize = 10.sp) }
+                }
                 if (page == "Looper") { LooperPage(context, looper); return@Column }
                 if (page == "Mixer") { MixerPage(); return@Column }
+                if (page == "Effects") { EffectsPage(recorder); return@Column }
                                 if (page == "Recordings") { TextButton(onClick = { showRecordings = true }) { Text("Open recordings") }; return@Column }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column { Text("SCARLETT RECORDER", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 20.sp); Text("USB audio interface", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    val device by usbAudio.device.collectAsState()
-                    AssistChip(onClick = { usbAudio.refresh() }, label = { Text(if (device == null) "No USB" else "USB ✓") }, leadingIcon = { Text("●", color = if (device == null) Color.Gray else Scarlett) })
+                val device by usbAudio.device.collectAsState()
+                Surface(color = if (device != null) Color(0xFF278839).copy(alpha = .18f) else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(14.dp)) {
+                    TextButton(onClick = { usbAudio.refresh() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (device != null) "●  USB Audio Connected" else "○  Connect USB audio interface",
+                            color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                    }
                 }
+                if (!monitoringActive || recording) Text(
+                    "%02d:%02d".format(seconds / 60, seconds % 60),
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    fontSize = 60.sp, fontWeight = FontWeight.Bold)
                 ChannelMeter("INPUT 1", "Mono", levels.first)
                 ChannelMeter("INPUT 2", "Mono", levels.second)
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Recording format", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(enabled = !recording, selected = mode == value, onClick = { if (monitoringActive) { mode = value; val restart = android.content.Intent(context, RecordingService::class.java).setAction("MONITOR").putExtra("mode", value); androidx.core.content.ContextCompat.startForegroundService(context, restart) } else mode = value }, label = { Text(value) }) } }
+                        Text(if (monitoringActive && !recording) "Input routing" else "Recording format", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) { listOf("Stereo", "Mono 1", "Mono 2", "Getrennt").forEach { value -> FilterChip(modifier = Modifier.weight(1f), enabled = !recording, selected = mode == value, onClick = { if (monitoringActive) { mode = value; val restart = android.content.Intent(context, RecordingService::class.java).setAction("MONITOR").putExtra("mode", value); androidx.core.content.ContextCompat.startForegroundService(context, restart) } else mode = value }, label = { Text(if (value == "Getrennt") "Split" else value, fontSize = 10.sp, maxLines = 1) }) } }
                         Text("48 kHz · 16 bit · WAV and MP3 export", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     }
                 }
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = monitoring, onCheckedChange = {
+                    Switch(checked = if (recording) monitoring else monitoringActive, onCheckedChange = {
                         monitoring = it
                         recorder.monitorEnabled = it
                         val intent = android.content.Intent(context, RecordingService::class.java)
                         if (it && !recording) androidx.core.content.ContextCompat.startForegroundService(context, intent.setAction("MONITOR").putExtra("mode", mode))
-                        else if (!it && recording) context.startService(intent.setAction("STOP"))
+                        else if (!it && !recording) context.startService(intent.setAction("STOP"))
                     })
                     Text("USB monitoring")
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = recorder.metronomeEnabled, onCheckedChange = { recorder.metronomeEnabled = it; recorder.bpm = recorderBpm })
+                    Switch(checked = recorderMetronome, onCheckedChange = { recorderMetronome = it; recorder.metronomeEnabled = it; recorder.bpm = recorderBpm })
                     Text("Metronome")
                     Spacer(Modifier.width(8.dp))
                     OutlinedTextField(value = recorderBpm.toInt().toString(), onValueChange = { it.toFloatOrNull()?.let { value -> recorderBpm = value.coerceIn(40f, 240f); recorder.bpm = recorderBpm } }, label = { Text("BPM") }, singleLine = true, modifier = Modifier.width(100.dp))
                 }
                 Text(if (audioError.isNotEmpty()) audioError else if (recording) "Recording · ${seconds}s" else if (monitoringActive) "Monitoring active" else "Ready", color = if (recording || monitoringActive) Scarlett else Color.Gray)
-                Button(onClick = {
+                if (!monitoringActive || recording) Button(onClick = {
                     val intent = android.content.Intent(context, RecordingService::class.java)
                     if (recording) context.startService(intent.setAction("STOP"))
                     else runCatching {
                         androidx.core.content.ContextCompat.startForegroundService(context, intent.putExtra("mode", mode))
                     }.onFailure { recorder.error.value = it.message ?: "Start failed" }
-                }, modifier = Modifier.fillMaxWidth().height(58.dp), colors = ButtonDefaults.buttonColors(containerColor = if (recording) Color(0xFF7B1D25) else Scarlett), shape = RoundedCornerShape(14.dp)) { Text(if (recording) "STOP RECORDING" else "●  START RECORDING", fontWeight = FontWeight.Bold) }
+                }, modifier = Modifier.align(Alignment.CenterHorizontally).size(104.dp).semantics { contentDescription = if (recording) "Stop recording" else "Start recording" }, colors = ButtonDefaults.buttonColors(containerColor = Scarlett), shape = CircleShape) { Text(if (recording) "■" else "●", color = Color.White, fontSize = 42.sp) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(enabled = !recording && !monitoringActive, onClick = { showRecordings = true }) { Text("Open recordings") }
                     OutlinedButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)) }) { Text("Open folder") }
@@ -217,12 +235,15 @@ class MainActivity : ComponentActivity() {
             Text("BPM ${bpm.toInt()}", color = MaterialTheme.colorScheme.onSurface)
             Slider(value = bpm, onValueChange = { bpm = it; looper.bpm = it }, valueRange = 40f..220f)
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                repeat(4) { slot ->
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                repeat(2) { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                repeat(2) { column ->
+                    val slot = row * 2 + column
                     val active = selectedSlot == slot
                     Box(
                         Modifier.weight(1f).aspectRatio(1f)
-                            .pointerInput(slot) {
+                            .pointerInput(slot, length) {
                                 detectTapGestures(
                                     onDoubleTap = {
                                         selectedSlot = slot
@@ -258,19 +279,28 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             }
-                            .background(if (active) Color(0xFF3B2025) else MaterialTheme.colorScheme.surface, RoundedCornerShape(18.dp)),
+                            .background(
+                                when (slotStates[slot]) {
+                                    LooperState.RECORDING -> Scarlett.copy(alpha = .18f)
+                                    LooperState.PLAYING -> Color(0xFF36B637).copy(alpha = .18f)
+                                    LooperState.OVERDUBBING -> Color(0xFFFFB020).copy(alpha = .18f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                }, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
                             drawArc(Color(0xFF3A3D44), -90f, 360f, false, style = Stroke(10f, cap = StrokeCap.Round))
                             val sweep = if (active) progress * 360f else if (slotLengths[slot] > 0f) 360f else 0f
-                            drawArc(if (slotStates[slot] == LooperState.RECORDING) Scarlett else Color(0xFF62C978), -90f, sweep, false, style = Stroke(10f, cap = StrokeCap.Round))
+                            drawArc(when (slotStates[slot]) { LooperState.RECORDING -> Scarlett; LooperState.OVERDUBBING -> Color(0xFFFFB020); else -> Color(0xFF62C978) }, -90f, sweep, false, style = Stroke(10f, cap = StrokeCap.Round))
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("${slot + 1}", color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            Text(slotStates[slot].name, color = Color.LightGray, fontSize = 9.sp)
+                            Text(when (slotStates[slot]) { LooperState.IDLE -> "Empty"; LooperState.RECORDING -> "Recording"; LooperState.PLAYING -> "Playing"; LooperState.OVERDUBBING -> "Overdub" }, color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            if (slotLengths[slot] > 0f) Text("%.2f s".format(slotLengths[slot]), fontSize = 14.sp)
                         }
                     }
+                }
+            }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -287,21 +317,34 @@ class MainActivity : ComponentActivity() {
                     slotLengths[selectedSlot] = 0f
                 }) { Text("CLEAR") }
             }
+            OutlinedButton(onClick = {
+                looper.stop()
+                repeat(4) { slot -> looper.clear(slot); slotStates[slot] = LooperState.IDLE; slotLengths[slot] = 0f }
+            }, modifier = Modifier.fillMaxWidth()) { Text("■  Stop all & clear") }
             Text("State: ${state.name} · Loop length: ${"%.2f".format(length)} s", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable private fun MixerPage() {
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text("LOOP MIXER", color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold); listOf("Loop 1", "Loop 2", "Loop 3", "Monitoring").forEach { name -> Row(verticalAlignment = Alignment.CenterVertically) { Text(name, Modifier.width(100.dp), color = MaterialTheme.colorScheme.onSurface); Slider(value = .8f, onValueChange = {}, modifier = Modifier.weight(1f)); TextButton(onClick = {}) { Text("MUTE") }; TextButton(onClick = {}) { Text("SOLO") } } } } }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("LOOP MIXER", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("Mixer controls are not connected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            repeat(4) { index ->
+                Text("Loop ${index + 1}")
+                Slider(value = .8f, onValueChange = {}, enabled = false)
+            }
+        }
+    }
 }
 
-@Composable private fun EffectsPage(recorder: AudioRecorder) { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text("EFFECTS", color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("EQ and compressor controls will be connected to the monitoring DSP in the next audio-engine pass.", color = MaterialTheme.colorScheme.onSurfaceVariant); Text("Monitoring currently uses the direct low-latency USB path.", color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
+@Composable private fun EffectsPage(recorder: AudioRecorder) { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text("EFFECTS", color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("Loop effects are not connected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant); Text("USB monitoring is unprocessed. No gate, EQ or compressor is applied.", color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
 
 @Composable private fun ChannelMeter(name: String, type: String, level: Float) {
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold); Text(if (level > 0f) "%.1f dBFS".format(20 * kotlin.math.log10(level)) else "−∞ dBFS", color = Color.LightGray) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold); Text(if (level > 0f) "%.1f dBFS".format(20 * kotlin.math.log10(level)) else "−∞ dBFS", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             LinearProgressIndicator(progress = { level }, modifier = Modifier.fillMaxWidth().height(12.dp), color = if (level > .85f) Color.Red else Color(0xFF62C978), trackColor = Color(0xFF303238))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(type, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp); Text("Monitoring", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
         }
